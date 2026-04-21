@@ -110,6 +110,11 @@ def build_event(evt: dict) -> str | None:
         "amc": "After Market Close",
         "dmh": "During Market Hours",
     }.get(hour, "Time TBD")
+    hour_emoji = {
+        "bmo": "🌅",
+        "amc": "🌝",
+        "dmh": "🔔",
+    }.get(hour, "⏰")
 
     eps_est = evt.get("epsEstimate")
     eps_act = evt.get("epsActual")
@@ -118,7 +123,7 @@ def build_event(evt: dict) -> str | None:
     quarter = evt.get("quarter")
     year = evt.get("year")
 
-    summary = f"📊 {symbol} Earnings"
+    summary = f"{hour_emoji} {symbol} Earnings"
     if quarter and year:
         summary += f" (Q{quarter} {year})"
 
