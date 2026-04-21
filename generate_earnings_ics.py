@@ -30,6 +30,15 @@ LOOKAHEAD_DAYS = 180
 # Also include recent past earnings so the calendar keeps history
 LOOKBACK_DAYS = 30
 
+# Event timing (in US Eastern time, so it auto-adjusts for DST)
+# BMO = earnings typically drop ~8:30am ET, ~1hr before NYSE open
+# AMC = earnings typically drop ~4:15pm ET, just after NYSE close
+# TBD = noon ET as a neutral placeholder
+BMO_TIME = (8, 30)    # 8:30am ET  -> 1:30pm UK (winter) / 1:30pm UK (summer via BST)
+AMC_TIME = (16, 15)   # 4:15pm ET  -> 9:15pm UK
+TBD_TIME = (12, 0)    # 12:00pm ET -> 5:00pm UK
+EVENT_DURATION_MIN = 30
+
 WATCHLIST_PATH = Path("watchlist.txt")
 OUTPUT_PATH = Path("docs/earnings.ics")
 
@@ -92,11 +101,6 @@ def ics_escape(text: str) -> str:
     )
 
 
-def fmt_date(d: str) -> str:
-    """Convert 'YYYY-MM-DD' to ICS DATE format 'YYYYMMDD'."""
-    return d.replace("-", "")
-
-
 def build_event(evt: dict) -> str | None:
     """Build a single VEVENT block from a Finnhub earnings record."""
     symbol = evt.get("symbol")
@@ -104,7 +108,7 @@ def build_event(evt: dict) -> str | None:
     if not symbol or not date_str:
         return None
 
-    hour = evt.get("hour", "")  # 'bmo', 'amc', or '' / 'dmh'
+    hour = evt.get("hour", "")  # 'bmo', 'amc', 'dmh', or ''
     hour_label = {
         "bmo": "Before Market Open",
         "amc": "After Market Close",
@@ -115,6 +119,13 @@ def build_event(evt: dict) -> str | None:
         "amc": "🌝",
         "dmh": "🔔",
     }.get(hour, "⏰")
+
+    # Pick the event start time based on earnings timing
+    start_hm = {
+        "bmo": BMO_TIME,
+        "amc": AMC_TIME,
+        "dmh": TBD_TIME,
+    }.get(hour, TBD_TIME)
 
     eps_est = evt.get("epsEstimate")
     eps_act = evt.get("epsActual")
@@ -145,20 +156,52 @@ def build_event(evt: dict) -> str | None:
     uid = hashlib.sha1(uid_seed.encode()).hexdigest() + "@earnings-feed"
 
     dtstamp = dt.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    date_ics = fmt_date(date_str)
-    # All-day event; DTEND is exclusive so next day
-    next_day = (dt.date.fromisoformat(date_str) + dt.timedelta(days=1)).strftime("%Y%m%d")
+
+    # Build timed event anchored to America/New_York so it auto-adjusts for DST
+    event_date = dt.date.fromisoformat(date_str)
+    start_dt = dt.datetime.combine(
+        event_date, dt.time(start_hm[0], start_hm[1])
+    )
+    end_dt = start_dt + dt.timedelta(minutes=EVENT_DURATION_MIN)
+    dtstart = start_dt.strftime("%Y%m%dT%H%M%S")
+    dtend = end_dt.strftime("%Y%m%dT%H%M%S")
 
     return "\r\n".join([
         "BEGIN:VEVENT",
         f"UID:{uid}",
         f"DTSTAMP:{dtstamp}",
-        f"DTSTART;VALUE=DATE:{date_ics}",
-        f"DTEND;VALUE=DATE:{next_day}",
+        f"DTSTART;TZID=America/New_York:{dtstart}",
+        f"DTEND;TZID=America/New_York:{dtend}",
         f"SUMMARY:{ics_escape(summary)}",
         f"DESCRIPTION:{description}",
         "TRANSP:TRANSPARENT",
         "END:VEVENT",
+    ])
+
+
+def vtimezone_block() -> str:
+    """
+    Minimal VTIMEZONE definition for America/New_York.
+    Required by RFC 5545 when using TZID references.
+    """
+    return "\r\n".join([
+        "BEGIN:VTIMEZONE",
+        "TZID:America/New_York",
+        "BEGIN:STANDARD",
+        "DTSTART:19701101T020000",
+        "RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU",
+        "TZOFFSETFROM:-0400",
+        "TZOFFSETTO:-0500",
+        "TZNAME:EST",
+        "END:STANDARD",
+        "BEGIN:DAYLIGHT",
+        "DTSTART:19700308T020000",
+        "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU",
+        "TZOFFSETFROM:-0500",
+        "TZOFFSETTO:-0400",
+        "TZNAME:EDT",
+        "END:DAYLIGHT",
+        "END:VTIMEZONE",
     ])
 
 
@@ -173,7 +216,7 @@ def build_calendar(events: list[str]) -> str:
         "X-WR-CALDESC:Auto-generated earnings dates from Finnhub",
         "X-PUBLISHED-TTL:PT6H",
     ]
-    return "\r\n".join(header + events + ["END:VCALENDAR"]) + "\r\n"
+    return "\r\n".join(header + [vtimezone_block()] + events + ["END:VCALENDAR"]) + "\r\n"
 
 
 def main() -> int:
