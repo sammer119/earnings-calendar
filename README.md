@@ -37,17 +37,21 @@ This generates the first version of `earnings.ics` and commits it.
 
 ### 6. Subscribe in Proton Calendar
 - Web: **Calendars → Add calendar → Add calendar from URL** → paste the GitHub Pages URL.
-- Proton refreshes subscribed calendars periodically (not instantly), but every update you push will show up.
+- Proton syncs subscribed calendars roughly every 24 hours. For an immediate refresh, remove and re-add the calendar.
 
 ## Updating your watchlist
 
-1. In TradingView, right-click your watchlist → **Export data** → save as `.txt`.
+1. In TradingView, click the **table icon** (Advanced View) at the top of your watchlist → **three-dot menu** → **Export...** → save as `.txt`.
 2. Replace `watchlist.txt` in the repo with the new file.
-3. Next scheduled run (or a manual trigger) will regenerate the feed.
+3. Next scheduled run (or a manual trigger via the Actions tab) will regenerate the feed.
+
+Lines starting with `###` are TradingView section headers and are ignored by the script.
 
 ## Notes
 
-- Events use stable UIDs (hash of ticker+date+quarter), so re-runs update existing events rather than duplicating them.
-- The free Finnhub tier allows 60 calls/minute. The script sleeps 1.1s between symbols to stay well under that; for a watchlist of 50 symbols, a run takes about a minute.
-- Earnings times (BMO / AMC) are included in the event description. Events themselves are all-day so they show cleanly in every calendar view.
-- If a symbol has no upcoming earnings in the 30-day-back / 180-day-forward window, it simply produces no events.
+- Events use stable UIDs (hash of ticker + date + quarter), so re-runs update existing events rather than duplicating them.
+- Past earnings drop off naturally as they roll out of Finnhub's return window; removed tickers disappear on the next sync.
+- The free Finnhub tier allows 60 calls/minute. The script sleeps 1.1s between symbols to stay well under that; a watchlist of 50 symbols takes about a minute.
+- Finnhub's free tier has limited coverage for non-US exchanges — LSE, MIL, TSX etc. may return no events.
+- Earnings timing (BMO / AMC / TBD) appears in the event description. Events are all-day so they render cleanly across all calendar views.
+- If a symbol has no upcoming earnings in the 30-day-back / 180-day-forward window, it produces no events.
